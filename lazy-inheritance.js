@@ -1,48 +1,23 @@
-;(function (obj, lazyLoader) {
+;
+(function (obj, lazyLoader) {
 	// lazy-script-loader module required (https://github.com/susanoobit/lazy-script-loader)
 	if (!lazyLoader) return;
 	Object.assign(obj, buildLazyInherit());
-	function buildLazyInherit () {
+
+	function buildLazyInherit() {
 		/**
 		 * Function -> Object
 		 * @param {Function} f
 		 */
-		function mapPrototype_ (f) {
+		function mapPrototype_(f) {
 			return f.prototype;
-		}
-
-		/**
-		 * Object[] -> Boolean
-		 * @param {Object[]} infos
-		 * @param {String} infos[].name
-		 */
-		function hasUnloaded_ (infos) {
-			return infos.some(checkUnloaded_);
-		}
-
-		/**
-		 * Object -> Boolean
-		 * @param {Object} info
-		 * @param {String} info.name
-		 */
-		function checkUnloaded_ (info) {
-			return !getFunctionClassFromInfo_(info);
-		}
-
-		/**
-		 * Object -> Object
-		 * @param {Object} info
-		 * @param {String} info.name
-		 */
-		function getFunctionClassFromInfo_ (info) {
-			return window[info.name];
 		}
 
 		/**
 		 * Object[] -> Object
 		 * @param {Object[]} prototypes
 		 */
-		function inheritMixinPrototypes_ (prototypes) {
+		function inheritMixinPrototypes_(prototypes) {
 			let [main, ...mixins] = prototypes;
 			return Object.assign(...[Object.create(main), ...mixins]);
 		}
@@ -55,9 +30,13 @@
 		 * @param {Function} inherited 
 		 * @param {Function[]} mixins 
 		 */
-		function inheritMixin_ (heritor, inherited, mixins = []) {
-			let functions = [inherited, ...mixins];
-			heritor.prototype = Object.assign(inheritMixinPrototypes_(functions.map(mapPrototype_)), heritor.prototype);
+		function inheritMixin_(heritor, inherited, mixins = []) {
+			const functions = [inherited, ...mixins];
+			heritor.prototype = Object.assign(
+				inheritMixinPrototypes_(functions.map(mapPrototype_)),
+				heritor.prototype
+			);
+			return heritor;
 		}
 
 		/**
@@ -69,43 +48,52 @@
 		 * @param {Object[]} mixinInfos
 		 * @param {String} mixinInfos[].name
 		 */
-		function inheritLoadedMixin_ (heritor, inheritedInfo, mixinInfos = []) {
-			let inheritedFunction = getFunctionClassFromInfo_(inheritedInfo),
+		function inheritLoadedMixin_(heritor, inheritedInfo, mixinInfos = []) {
+			const inheritedFunction = getFunctionClassFromInfo_(inheritedInfo),
 				mixinFunctions = mixinInfos.map(getFunctionClassFromInfo_);
-			inheritMixin_(heritor, inheritedFunction, mixinFunctions);
+			return inheritMixin_(heritor, inheritedFunction, mixinFunctions);
 		}
 
 		/**
-		 * (Function, Object, Object[]) -> Maybe Promise
+		 * (Function, Object, Object[]) -> Promise | Function
 		 * Inherit functions asynchronously if they're not loaded and synchronously if they are loaded (lazy load). See
 		 * `inheritMixin_` for a detailed explanation about the mixin inheritance used.
 		 * @param {Function} heritor 
-		 * @param {Object} inheritedInfo 
-		 * @param {String} ininheritedInfofo.name
-		 * @param {String} ininheritedInfofo.url
-		 * @param {Object[]} mixinInfos
+		 * @param {Object[]|Function[]|String[]} mixinInfos
 		 * @param {String} mixinInfos[].name
 		 * @param {String} mixinInfos[].url
 		 */
-		function lazyInheritMixin_ (heritor, inheritedInfo, mixinInfos = []) {
-			let infos = [inheritedInfo, ...mixinInfos];
+		function lazyInheritMixin_(heritor, mixinInfos = []) {
+			const _mixinInfos = mixinInfos.some(info => typeof info == 'string') ?
+					mixinInfos
+						.filter(info => !!info.name && !!info.url)
+						.concat(
+							mixinInfos
+								.filter(info => typeof info == 'string')
+								.map(info => ({ name: info }))
+						) :
+					mixinInfos.filter(info => !!info.name && !!info.url),
+				_loadedFunctions = mixinInfos.filter(info => typeof info == 'function');
 
-			if (!hasUnloaded_(infos)) {
-				inheritLoadedMixin_(...arguments);
-				return;
+			if (!_mixinInfos.length) {
+				return inheritLoadedMixin_(heritor, _loadedFunctions);
 			}
 
-			let promises = infos.map(lazyLoader),
-				fixedScopeInheritLoadedMixin_ = inheritLoadedMixin_.bind(null, ...arguments);
-			return Promise.all(promises)
-				.then(fixedScopeInheritLoadedMixin_);
+			const promises = _mixinInfos.map(lazyLoader);
+			return new Promise((resolve, reject) => {
+				Promise.all(promises)
+					.then(
+						mixins => resolve(inheritLoadedMixin_(heritor, mixins.concat(_loadedFunctions))),
+						reject
+					);
+			})
 		}
-		
+
 		/**
 		 * Object[] -> Object
 		 * @param {Object[]} prototypes
 		 */
-		function inheritChainPrototypes_ (prototypes) {
+		function inheritChainPrototypes_(prototypes) {
 			return Object.create(prototypes.reduce((inherited, prototype) => {
 				return Object.assign(Object.create(inherited), prototype)
 			}));
@@ -117,7 +105,7 @@
 		 * @param {Function} heritor 
 		 * @param {Function[]} chain 
 		 */
-		function inheritChain_ (heritor, chain = []) {
+		function inheritChain_(heritor, chain = []) {
 			let chainPrototypes = chain.map(mapPrototype_),
 				inheritedChain = inheritChainPrototypes_(chainPrototypes);
 			heritor.prototype = Object.assign(inheritedChain, heritor.prototype);
@@ -130,7 +118,7 @@
 		 * @param {Object[]} chainInfos
 		 * @param {String} chainInfos[].name
 		 */
-		function inheritLoadedChain_ (heritor, chainInfos = []) {
+		function inheritLoadedChain_(heritor, chainInfos = []) {
 			let chainFunctions = chainInfos.map(getFunctionClassFromInfo_);
 			inheritChain_(heritor, chainFunctions);
 		}
@@ -144,7 +132,7 @@
 		 * @param {String} chainInfos[].name
 		 * @param {String} chainInfos[].url
 		 */
-		function lazyInheritChain_ (heritor, chainInfos = []) {
+		function lazyInheritChain_(heritor, chainInfos = []) {
 			if (!hasUnloaded_(chainInfos)) {
 				inheritLoadedChain_(...arguments);
 				return;
@@ -162,5 +150,5 @@
 			inheritChain: inheritChain_,
 			lazyInheritChain: lazyInheritChain_
 		};
-	};
+	}
 })(window, window.importScript);
