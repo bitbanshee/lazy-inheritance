@@ -15,7 +15,7 @@
 		 * 
 		 * @param {Function} f
 		 */
-		function mapPrototype_ (f) {
+		function mapPrototype_(f) {
 			return f.prototype;
 		}
 
@@ -60,6 +60,7 @@
 		 * whose prototype is the first prototype passed. Only mixins enumerable properties are considered as well as
 		 * getters and setters.
 		 * 
+
 		 * @param {Function} heritor 
 		 * @param {Function[]|...Function|Array<{ name: string, url: string}>|...{ name: string, url: string}} mixins
 		 */
