@@ -1,40 +1,15 @@
 # Lazy Inheritance
-**Lazy Inheritance** is a very simple component to create prototype chain and mixin inheritance patterns in JS.
+**Lazy Inheritance** is a simple component to create prototype mixin inheritance in JS.
 
 ## Dependencies
 [__Lazy Script Loader__](https://github.com/susanoobit/lazy-script-loader): `importScript` method is required.
 
 ## Info Object
-__Lazy Inheritance__ works for unloaded JS scripts using a `info` object, as described below:
-```js
-var infoEx = {
-    // Function name
-    name: `Cat`,
-    // URL
-    url: `scripts/animals/Cat.js`
-}
-```
-First, name is checked to make sure the function is already loaded. If it is, the inheritance is made. If not, a request is made and the inheritance is done when the script is loaded, asynchronously.
+__Lazy Inheritance__ works for unloaded JS scripts using a `info` object. See [__Lazy Script Loader__](https://github.com/susanoobit/lazy-script-loader) for further information.
 
 ## Methods
-### `inheritMixin(heritor, inherited, mixins)`
+### `inherit(heritor, mixins)`
 * `heritor`: a function heritor.
-* `inherited`: a function to be inherited.
-* `mixins`: an array of functions to be mixed in. __Getters/Setters__ from `mixins` prototype will be ignored.
-Inherit synchronously using [mixin inheritance](https://addyosmani.com/resources/essentialjsdesignpatterns/book/#mixinpatternjavascript).
+* `mixins`: an array of functions to be mixed in. __Getters/Setters__ from `mixins` prototype will be considered.
 
-### `lazyInheritMixin(heritor, inheritedInfo, mixinInfos)` -> `Maybe Promise`
-* `heritor`: a function heritor.
-* `inheritedInfo`: an [info object](#info-object) describing a function to be inherited.
-* `mixinInfos`: an array of [info object](#info-object) describing functions to be mixed in. __Getters/Setters__ from `mixins` prototype will be ignored.
-Inherit functions asynchronously if they're not loaded and synchronously if they are loaded (lazy load) using [mixin inheritance](https://addyosmani.com/resources/essentialjsdesignpatterns/book/#mixinpatternjavascript). A promise `Promise.all` is returned resolved for `inheritMixin` when some scripts need to be loaded.
-
-### `inheritChain(heritor, chain)`
-* `heritor`: a function heritor.
-* `chain`: an array of functions to be inherited. The first function will be the lowest in the prototype chain.
-Inherit synchronously using [prototype chain inheritance](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Inheritance_and_the_prototype_chain).
-
-### `lazyInheritChain(heritor, chainInfos)` -> `Maybe Promise`
-* `heritor`: a function heritor.
-* `chainInfos`: an array of [info object](#info-object) describing functions to be inherited. The first function will be the lowest in the prototype chain.
-Inherit functions asynchronously if they're not loaded and synchronously if they are loaded (lazy load) using [prototype chain inheritance](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Inheritance_and_the_prototype_chain). A promise `Promise.all` is returned resolved for `inheritChain` when some scripts need to be loaded.
+The first function in `mixins` is used to make common prototypical inheritance. The remaining functions are used to make inheritance using some technique close to [mixin inheritance](https://addyosmani.com/resources/essentialjsdesignpatterns/book/#mixinpatternjavascript). What that means: when an object is created, `instanceof` will return `true` only when used against the first function in `mixins`, but parameters will be overridden by each remaining functions prototypes parameters, progressively.

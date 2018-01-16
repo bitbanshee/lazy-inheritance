@@ -1,10 +1,18 @@
 ;(function (obj, lazyLoader) {
-	// lazy-script-loader module required (https://github.com/susanoobit/lazy-script-loader)
-	if (!lazyLoader) return;
+	// lazy-script-loader required (https://github.com/susanoobit/lazy-script-loader)
+	if (!obj || !lazyLoader) {
+		return;
+	}
+
 	Object.assign(obj, buildLazyInherit());
 	function buildLazyInherit () {
+		return {
+			inherit: lazyInheritMixin_
+		};
+
 		/**
 		 * Function -> Object
+		 * 
 		 * @param {Function} f
 		 */
 		function mapPrototype_ (f) {
@@ -13,154 +21,163 @@
 
 		/**
 		 * Object[] -> Boolean
+		 * 
 		 * @param {Object[]} infos
 		 * @param {String} infos[].name
 		 */
 		function hasUnloaded_ (infos) {
 			return infos.some(checkUnloaded_);
+
+			/**
+			 * Object -> Boolean
+			 * 
+			 * @param {Object} info
+			 * @param {String} info.name
+			 */
+			function checkUnloaded_ (info) {
+				return !getFunctionClassFromInfo_(info);
+			}
 		}
 
 		/**
-		 * Object -> Boolean
-		 * @param {Object} info
-		 * @param {String} info.name
-		 */
-		function checkUnloaded_ (info) {
-			return !getFunctionClassFromInfo_(info);
-		}
-
-		/**
-		 * Object -> Object
+		 * Object -> Object|undefined
+		 * 
 		 * @param {Object} info
 		 * @param {String} info.name
 		 */
 		function getFunctionClassFromInfo_ (info) {
-			return window[info.name];
+			return obj[info.name];
 		}
 
 		/**
-		 * Object[] -> Object
-		 * @param {Object[]} prototypes
-		 */
-		function inheritMixinPrototypes_ (prototypes) {
-			let [main, ...mixins] = prototypes;
-			return Object.assign(...[Object.create(main), ...mixins]);
-		}
-
-		/**
-		 * Inherit synchronously using mixin inheritance, e.g., the heritor inherits a single prototype and the mixins
-		 * are fusioned to that prototype. If the mixins have properties with the same name, they'll be overwritten by
-		 * the next prototype mixin. e.g., the order of mixins matters. Getters and setters are ignored for mixins.
+		 * TL;DR: Make synchronous inheritance using mixin inheritance. Mixins must be passed in order simulating a
+		 * prototype chain order, i.e., the first mixin is the prototype from which the others will rely on and the
+		 * last is the prototype whose properties overrides the others with same name.
+		 * 
+		 * Make synchronous inheritance using mixin inheritance, e.g., the heritor inherits from a single prototype built
+		 * using the mixins' properties. Then, that single prototype inherits from the first prototype in the passed
+		 * list of mixins. That way, `instanceof` would return `true` when a created object is compared to the function
+		 * whose prototype is the first prototype passed. Only mixins enumerable properties are considered as well as
+		 * getters and setters.
+		 * 
 		 * @param {Function} heritor 
-		 * @param {Function} inherited 
-		 * @param {Function[]} mixins 
+		 * @param {Function[]|...Function|Array<{ name: string, url: string}>|...{ name: string, url: string}} mixins
 		 */
-		function inheritMixin_ (heritor, inherited, mixins = []) {
-			let functions = [inherited, ...mixins];
-			heritor.prototype = Object.assign(inheritMixinPrototypes_(functions.map(mapPrototype_)), heritor.prototype);
+		function inheritMixin_ (heritor, mixins = []) {
+			inherit_(inheritMixinPrototypes_, ...arguments);
+			
+			/**
+			 * Object[] -> Object
+			 * 
+			 * @param {Object[]} prototypes
+			 */
+			function inheritMixinPrototypes_ (prototypes) {
+				const [main, ...mixins] = prototypes;
+				if (mixins.length) {
+					const mixinsDescriptors = mixins.reverse().reduce(toEnumerableDescriptorsObject, {});
+					return Object.defineProperties(Object.create(main), mixinsDescriptors);
+				}
+				return Object.create(main);
+
+				function getEnumerableDescriptors (object) {
+					return Object.entries(Object.getOwnPropertyDescriptors(object))
+						.filter(enumerable)
+						.reduce(toDescriptorsObject, {});
+
+					function enumerable ([key, value]) {
+						return value.enumerable;
+					}
+
+					function toDescriptorsObject (descriptors, [key, value]) {
+						descriptors[key] = value;
+						return descriptors;
+					}
+				}
+
+				function toEnumerableDescriptorsObject (descriptors, prototype) {
+					const enumerableDescriptors = getEnumerableDescriptors(prototype);
+					return Object.assign(descriptors, enumerableDescriptors);
+				}
+			}
 		}
 
 		/**
-		 * Inherit loaded functions synchronously. See `inheritMixin_` for a detailed explanation about the mixin
-		 * inheritance used.
+		 * Make asynchronous inheritance of functions if they're not loaded and synchronously if they
+		 * are loaded (lazy load) using a passed 'inheritance applier' function. If any entry is not
+		 * loaded, load it using an object that follows the structure { name: string, url: string }.
+		 * The 'inheritance applier' function should follow the signature below:
+		 * 'function (heritor: Function, fns: Function|Function[]|Array<{ name: string, url: string }> [..., {Function}])'
+		 * 
+		 * @param {Function} inheritanceApplierFn 
 		 * @param {Function} heritor 
-		 * @param {Object} inheritedInfo 
-		 * @param {String} ininheritedInfofo.name
-		 * @param {Object[]} mixinInfos
-		 * @param {String} mixinInfos[].name
+		 * @param {Function[]|...Function|Array<{ name: string, url: string}>|...{ name: string, url: string}} fns 
+		 * @return {PromiseLike<heritor>}
 		 */
-		function inheritLoadedMixin_ (heritor, inheritedInfo, mixinInfos = []) {
-			let inheritedFunction = getFunctionClassFromInfo_(inheritedInfo),
-				mixinFunctions = mixinInfos.map(getFunctionClassFromInfo_);
-			inheritMixin_(heritor, inheritedFunction, mixinFunctions);
-		}
+		function lazyInherit_ (inheritanceApplierFn, heritor, fns = []) {
+			const _fns = Array.isArray(fns) ?
+				fns : [...arguments].slice(2);
 
-		/**
-		 * (Function, Object, Object[]) -> Maybe Promise
-		 * Inherit functions asynchronously if they're not loaded and synchronously if they are loaded (lazy load). See
-		 * `inheritMixin_` for a detailed explanation about the mixin inheritance used.
-		 * @param {Function} heritor 
-		 * @param {Object} inheritedInfo 
-		 * @param {String} ininheritedInfofo.name
-		 * @param {String} ininheritedInfofo.url
-		 * @param {Object[]} mixinInfos
-		 * @param {String} mixinInfos[].name
-		 * @param {String} mixinInfos[].url
-		 */
-		function lazyInheritMixin_ (heritor, inheritedInfo, mixinInfos = []) {
-			let infos = [inheritedInfo, ...mixinInfos];
+			const infos = _fns
+				.filter(isInfo)
+				.map(shapeInfo);
 
-			if (!hasUnloaded_(infos)) {
-				inheritLoadedMixin_(...arguments);
-				return;
+			if (!infos.length || !hasUnloaded_(infos)) {
+				return Promise.resolve(inheritAfterLoad(heritor, _fns));
 			}
 
-			let promises = infos.map(lazyLoader),
-				fixedScopeInheritLoadedMixin_ = inheritLoadedMixin_.bind(null, ...arguments);
+			const promises = infos.map(lazyLoader),
+				fixedScopeInheritAfterLoad = inheritAfterLoad.bind(null, heritor, _fns);
+
 			return Promise.all(promises)
-				.then(fixedScopeInheritLoadedMixin_);
-		}
-		
-		/**
-		 * Object[] -> Object
-		 * @param {Object[]} prototypes
-		 */
-		function inheritChainPrototypes_ (prototypes) {
-			return Object.create(prototypes.reduce((inherited, prototype) => {
-				return Object.assign(Object.create(inherited), prototype)
-			}));
-		}
+				.then(fixedScopeInheritAfterLoad);
 
-		/**
-		 * Inherit synchronously using a chain inheritance, e.g., each entry will be the prototype object
-		 * of the next entry, recursively.
-		 * @param {Function} heritor 
-		 * @param {Function[]} chain 
-		 */
-		function inheritChain_ (heritor, chain = []) {
-			let chainPrototypes = chain.map(mapPrototype_),
-				inheritedChain = inheritChainPrototypes_(chainPrototypes);
-			heritor.prototype = Object.assign(inheritedChain, heritor.prototype);
-		}
-
-		/**
-		 * Inherit loaded functions synchronously. See `inheritChain_` for a detailed explanation about the chain
-		 * inheritance used.
-		 * @param {Function} heritor 
-		 * @param {Object[]} chainInfos
-		 * @param {String} chainInfos[].name
-		 */
-		function inheritLoadedChain_ (heritor, chainInfos = []) {
-			let chainFunctions = chainInfos.map(getFunctionClassFromInfo_);
-			inheritChain_(heritor, chainFunctions);
-		}
-
-		/**
-		 * (Function, Object[]) -> Maybe Promise
-		 * Inherit functions asynchronously if they're not loaded and synchronously if they are loaded (lazy load). See
-		 * `inheritChain_` for a detailed explanation about the chain inheritance used.
-		 * @param {Function} heritor 
-		 * @param {Object[]} chainInfos
-		 * @param {String} chainInfos[].name
-		 * @param {String} chainInfos[].url
-		 */
-		function lazyInheritChain_ (heritor, chainInfos = []) {
-			if (!hasUnloaded_(chainInfos)) {
-				inheritLoadedChain_(...arguments);
-				return;
+			function isInfo (entry) {
+				return typeof entry == 'string' || (!!entry.name && !!entry.url);
 			}
 
-			let promises = chainInfos.map(lazyLoader),
-				fixedScopeInheritLoadedChain_ = inheritLoadedChain_.bind(null, ...arguments);
-			return Promise.all(promises)
-				.then(fixedScopeInheritLoadedChain_);
+			function shapeInfo (info) {
+				if (typeof info == 'string') {
+					return {
+						name: info,
+						url: info + '.js'
+					};
+				}
+				return info;
+			}
+
+			function inheritAfterLoad (heritor, fns) {
+				const toMixinFunctions = entry => isInfo(entry) ?
+					getFunctionClassFromInfo_(entry) :
+					entry;
+				const mixinFunctions = fns.map(toMixinFunctions);
+				inheritanceApplierFn(heritor, mixinFunctions);
+				return heritor;
+			}
 		}
 
-		return {
-			inheritMixin: inheritMixin_,
-			lazyInheritMixin: lazyInheritMixin_,
-			inheritChain: inheritChain_,
-			lazyInheritChain: lazyInheritChain_
-		};
+		/**
+		 * Make synchronous inheritance using a prototype object created by a passed reducer which is
+		 * applied on an array of prototypes extrated from passed functions.
+		 * 
+		 * @param {Function} inputReducer
+		 * @param {Function} heritor 
+		 * @param {Function[]} fns 
+		 */
+		function inherit_ (inputReducer, heritor, fns = []) {
+			Object.setPrototypeOf(heritor.prototype, inputReducer(fns.map(mapPrototype_)));
+		}
+
+		/**
+		 * (Object, Object[]) -> Promise
+		 * 
+		 * Make asynchronous inheritance of functions if they're not loaded and synchronously if they
+		 * are loaded (lazy load). See `inheritMixin_` for a detailed explanation about the inheritance model.
+		 * 
+		 * @param {Function} heritor 
+		 * @param {Function[]|...Function|Array<{ name: string, url: string}>|...{ name: string, url: string}}  mixins
+		 */
+		function lazyInheritMixin_ (heritor, mixins = []) {
+			return lazyInherit_(inheritMixin_, ...arguments);
+		}
 	};
-})(window, window.importScript);
+})(window, importScript);
